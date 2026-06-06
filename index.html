@@ -1507,7 +1507,22 @@ function exportPDF(){
   <div class="footer">LoanManager Pro · Confidencial · ${now}</div></body></html>`);
   win.document.close();
 }
-
+function filtrarClientes(){
+  const q=document.getElementById('f-cli-search').value.toLowerCase();
+  const lista=document.getElementById('f-cli-lista');
+  document.getElementById('f-cli').value='';
+  if(!q){lista.style.display='none';return;}
+  const filtrados=DB.clientes.filter(c=>c.nome.toLowerCase().includes(q));
+  if(filtrados.length===0){lista.innerHTML='<div style="padding:12px;color:var(--text3);font-size:13px">Nenhum cliente encontrado</div>';lista.style.display='block';return;}
+  lista.innerHTML=filtrados.map(c=>`<div onclick="selecionarCliente('${c.id}','${c.nome.replace(/'/g,"\\'")}')" style="padding:11px 13px;cursor:pointer;font-size:14px;border-bottom:1px solid var(--border)" onmouseover="this.style.background='var(--bg)'" onmouseout="this.style.background=''">${c.nome}<span style="font-size:11px;color:var(--text3);margin-left:6px">${c.cpf||''}</span></div>`).join('')+
+  `<div onclick="closeSheet('sh-contrato');openSheet('sh-cliente')" style="padding:11px 13px;cursor:pointer;font-size:14px;color:var(--blue);font-weight:600;border-top:2px solid var(--border)">➕ Cadastrar novo cliente</div>`;
+  lista.style.display='block';
+}
+function selecionarCliente(id,nome){
+  document.getElementById('f-cli').value=id;
+  document.getElementById('f-cli-search').value=nome;
+  document.getElementById('f-cli-lista').style.display='none';
+}
 // ===== INIT =====
 loadDB();
 // set today dates
