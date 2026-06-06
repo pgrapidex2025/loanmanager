@@ -485,7 +485,13 @@ body{font-family:-apple-system,BlinkMacSystemFont,'SF Pro Text',sans-serif;backg
     <div class="sh-handle"></div>
     <div class="sh-hdr"><h3>Novo Contrato</h3><button class="icon-btn" style="background:var(--bg);color:var(--text2)" onclick="closeSheet('sh-contrato')"><i class="ti ti-x"></i></button></div>
     <div class="sh-body">
-      <div class="fg"><label>Cliente *</label><select id="f-cli"><option value="">Selecione o cliente...</option></select></div>
+      <div class="fg"><label>Cliente *</label>
+  <input type="text" id="f-cli-search" placeholder="Digite o nome para buscar..." 
+    oninput="filtrarClientes()" autocomplete="off"
+    style="width:100%;background:var(--bg);border:1.5px solid var(--border);border-radius:10px;padding:11px 13px;font-size:15px;color:var(--text);font-family:inherit">
+  <input type="hidden" id="f-cli">
+  <div id="f-cli-lista" style="display:none;background:var(--card);border:1.5px solid var(--border);border-radius:10px;max-height:180px;overflow-y:auto;margin-top:4px;box-shadow:0 4px 12px rgba(0,0,0,.1)"></div>
+</div>
       <div class="fg"><label>Responsável</label><select id="f-resp"><option value="admin">Admin (você)</option></select></div>
       <div class="frow">
         <div class="fg"><label>Tipo</label><select id="f-tipo"><option>Pessoal</option><option>Consignado</option><option>Imobiliário</option><option>Veicular</option><option>Capital de Giro</option></select></div>
