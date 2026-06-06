@@ -725,7 +725,7 @@ body{overscroll-behavior:none}
 <div class="so" id="sh-pgto" onclick="fov(event,'sh-pgto')">
   <div class="sheet">
     <div class="sh-handle"></div>
-    <div class="sh-hdr"><h3>Registrar Pagamento</h3><button class="hdr-icon-btn" onclick="closeSheet('sh-pgto')"><i class="ti ti-x"></i></button></div>
+    <div class="sh-hdr"><h3 id="sh-pgto-title">Registrar Pagamento</h3><button class="hdr-icon-btn" onclick="closeSheet('sh-pgto')"><i class="ti ti-x"></i></button></div>
     <div class="sh-body">
       <div class="fg"><label>Contrato *</label><select id="p-cont"><option value="">Selecione o contrato...</option></select></div>
       <div class="frow">
@@ -742,7 +742,7 @@ body{overscroll-behavior:none}
     </div>
     <div class="sh-ftr">
       <button class="btn btn-ghost" onclick="closeSheet('sh-pgto')" style="flex:1">Cancelar</button>
-      <button class="btn btn-emerald" onclick="salvarPgto()" style="flex:2">Confirmar Pagamento</button>
+      <button class="btn btn-emerald" onclick="salvarPgto()" style="flex:2" id="btn-salvar-pgto">Confirmar Pagamento</button>
     </div>
   </div>
 </div>
@@ -828,6 +828,12 @@ const today=()=>new Date().toISOString().split('T')[0];
 const nextMonth=d=>{const dt=new Date(d+'T12:00:00');dt.setMonth(dt.getMonth()+1);return dt.toISOString().split('T')[0];};
 const diffDays=(a,b)=>Math.round((new Date(b)-new Date(a))/(864e5));
 const newId=prefix=>prefix+'-'+Date.now().toString(36).toUpperCase();
+function newContratoId(){
+  const ano=new Date().getFullYear();
+  const existentes=DB.contratos.filter(c=>c.id.startsWith('CF-'+ano+'-')).map(c=>parseInt(c.id.split('-')[2])||0);
+  const seq=(existentes.length>0?Math.max(...existentes):0)+1;
+  return'CF-'+ano+'-'+String(seq).padStart(3,'0');
+}
 
 // ===== SESSION =====
 const SESSION_KEY='lm_session';const SESSION_TTL=3600000;
@@ -1219,7 +1225,7 @@ function salvarContrato(){
   if(!cid){showToast('Selecione um cliente','err');return;}
   const v=parseFloat(document.getElementById('fv').value)||0,t=parseFloat(document.getElementById('ft').value)||0,p=parseInt(document.getElementById('fp').value)||0;
   if(!v||!t||!p){showToast('Preencha valor, taxa e parcelas','err');return;}
-  const tabela=document.getElementById('f-tabela').value,pmt=calcPMT(v,t/100,p,tabela),id=newId('EMP');
+  const tabela=document.getElementById('f-tabela').value,pmt=calcPMT(v,t/100,p,tabela),id=newContratoId();
   DB.contratos.push({id,clienteId:cid,tipo:document.getElementById('f-tipo').value,tabela,valor:v,taxa:t,parcelas:p,pagas:0,inicio:document.getElementById('fd').value||today(),status:'Ativo',parcela:Math.round(pmt*100)/100,resp:document.getElementById('f-resp').value||'admin',obs:document.getElementById('f-obs').value});
   saveDB();closeSheet('sh-contrato');populateSelects();renderContratos();renderPainel();checkAlertas();showToast('✅ Contrato '+id+' criado!');
   ['fv','ft','fp','f-obs'].forEach(id2=>{const el=document.getElementById(id2);if(el)el.value='';});
@@ -1235,17 +1241,73 @@ function renderPgtos(){
   let lista=DB.pagamentos.filter(p=>visIds.has(p.contratoId));
   if(filtroP)lista=lista.filter(p=>p.status===filtroP);
   if(q)lista=lista.filter(p=>{const c=DB.contratos.find(x=>x.id===p.contratoId);const cl=c&&DB.clientes.find(x=>x.id===c.clienteId);return p.contratoId.toLowerCase().includes(q)||(cl&&cl.nome.toLowerCase().includes(q));});
+  // sort by date desc
+  lista=lista.slice().sort((a,b)=>(b.data||'').localeCompare(a.data||''));
   document.getElementById('pgtos-list').innerHTML=lista.length===0?`<div class="empty"><i class="ti ti-cash-off"></i>Nenhum pagamento encontrado</div>`:
-    lista.map(p=>{const c=DB.contratos.find(x=>x.id===p.contratoId);const cl=c&&DB.clientes.find(x=>x.id===c.clienteId);return`<div class="pi"><div class="pi-hdr"><div><div class="pi-cont">${p.contratoId}</div><div class="pi-cli">${cl?cl.nome:'?'} · ${p.parcela}ª parcela · ${fmtD(p.data)}</div></div><div style="text-align:right"><div class="pi-v">${fmt(p.total)}</div>${p.mora>0?`<div style="font-size:11px;color:var(--red)">+${fmt(p.mora)} mora</div>`:''}<div style="margin-top:3px">${spill(p.status)}</div></div></div></div>`;}).join('');
+    lista.map(p=>{const c=DB.contratos.find(x=>x.id===p.contratoId);const cl=c&&DB.clientes.find(x=>x.id===c.clienteId);
+    return`<div class="pi">
+      <div class="pi-hdr">
+        <div>
+          <div class="pi-cont">${p.contratoId}</div>
+          <div class="pi-cli">${cl?cl.nome:'?'} · ${p.parcela}ª parcela · ${fmtD(p.data)}</div>
+          <div style="font-size:11px;color:var(--text3);margin-top:2px">${p.forma||''}${p.comp?' · Comp: '+p.comp:''}</div>
+        </div>
+        <div style="text-align:right;display:flex;flex-direction:column;align-items:flex-end;gap:4px">
+          <div class="pi-v">${fmt(p.total)}</div>
+          ${p.mora>0?`<div style="font-size:11px;color:var(--red)">+${fmt(p.mora)} mora</div>`:''}
+          <div>${spill(p.status)}</div>
+          <button class="btn btn-ghost btn-sm" style="margin-top:2px;padding:4px 8px;font-size:11px" onclick="editarPgto('${p.id}')"><i class="ti ti-edit" style="font-size:13px"></i> Editar</button>
+        </div>
+      </div>
+    </div>`;}).join('');
+}
+
+let editPgtoId=null;
+function editarPgto(id){
+  const p=DB.pagamentos.find(x=>x.id===id);if(!p)return;
+  editPgtoId=id;
+  document.getElementById('sh-pgto-title').textContent='Editar Pagamento';
+  document.getElementById('btn-salvar-pgto').textContent='Salvar Alterações';
+  // populate selects including all contracts
+  const psel=document.getElementById('p-cont');
+  const vis=contratosVis();
+  psel.innerHTML=vis.map(c=>{const cl=DB.clientes.find(x=>x.id===c.clienteId);return`<option value="${c.id}">${c.id} — ${cl?cl.nome:'?'}</option>`;}).join('');
+  psel.value=p.contratoId;
+  document.getElementById('p-num').value=p.parcela;
+  document.getElementById('p-val').value=p.valor;
+  document.getElementById('p-data').value=p.data;
+  document.getElementById('p-mora').value=p.mora||0;
+  document.getElementById('p-comp').value=p.comp||'';
+  document.getElementById('p-obs').value=p.obs||'';
+  document.getElementById('p-forma').value=p.forma||'PIX';
+  openSheet('sh-pgto');
 }
 function salvarPgto(){
   const cid=document.getElementById('p-cont').value;if(!cid){showToast('Selecione um contrato','err');return;}
   const val=parseFloat(document.getElementById('p-val').value)||0;if(!val){showToast('Informe o valor pago','err');return;}
-  const mora=parseFloat(document.getElementById('p-mora').value)||0,c=DB.contratos.find(x=>x.id===cid);
-  const numP=parseInt(document.getElementById('p-num').value)||((c?c.pagas:0)+1);
-  DB.pagamentos.push({id:newId('PG'),contratoId:cid,data:document.getElementById('p-data').value||today(),parcela:numP,valor:val,mora,total:val+mora,status:'Pago',forma:document.getElementById('p-forma').value,comp:document.getElementById('p-comp').value,obs:document.getElementById('p-obs').value});
-  if(c){c.pagas=Math.max(c.pagas,numP);if(c.pagas>=c.parcelas)c.status='Quitado';}
-  saveDB();closeSheet('sh-pgto');populateSelects();renderPgtos();renderContratos();renderPainel();checkAlertas();showToast('✅ Pagamento registrado!');
+  const mora=parseFloat(document.getElementById('p-mora').value)||0;
+  const numP=parseInt(document.getElementById('p-num').value)||1;
+  const dados={contratoId:cid,data:document.getElementById('p-data').value||today(),parcela:numP,valor:val,mora,total:val+mora,status:'Pago',forma:document.getElementById('p-forma').value,comp:document.getElementById('p-comp').value,obs:document.getElementById('p-obs').value};
+  if(editPgtoId){
+    // editing: update existing
+    const idx=DB.pagamentos.findIndex(x=>x.id===editPgtoId);
+    if(idx>=0)DB.pagamentos[idx]={...DB.pagamentos[idx],...dados};
+    editPgtoId=null;
+    document.getElementById('sh-pgto-title').textContent='Registrar Pagamento';
+    document.getElementById('btn-salvar-pgto').textContent='Confirmar Pagamento';
+    showToast('✅ Pagamento atualizado!');
+  }else{
+    DB.pagamentos.push({id:newId('PG'),...dados});
+    const c=DB.contratos.find(x=>x.id===cid);
+    if(c){c.pagas=Math.max(c.pagas,numP);if(c.pagas>=c.parcelas)c.status='Quitado';}
+    showToast('✅ Pagamento registrado!');
+  }
+  // recalculate pagas for all contracts based on actual payments
+  DB.contratos.forEach(c=>{
+    const pgtos=DB.pagamentos.filter(p=>p.contratoId===c.id&&p.status==='Pago');
+    if(pgtos.length>0){const maxP=Math.max(...pgtos.map(p=>p.parcela||0));c.pagas=maxP;c.status=maxP>=c.parcelas?'Quitado':c.status==='Quitado'?'Ativo':c.status;}
+  });
+  saveDB();closeSheet('sh-pgto');populateSelects();renderPgtos();renderContratos();renderPainel();checkAlertas();
   ['p-val','p-num','p-mora','p-comp','p-obs'].forEach(id2=>{const el=document.getElementById(id2);if(el)el.value='';});
 }
 
@@ -1365,6 +1427,7 @@ function updMsg(id,html){const e=document.getElementById(id);if(e)e.innerHTML=ht
 // ===== PERFIL =====
 function abrirPerfil(){
   const isAdmin=CU.role==='admin';
+  const savedClient=localStorage.getItem('cf_gdrive_client')||'';
   document.getElementById('perfil-body').innerHTML=`
     <div style="display:flex;align-items:center;gap:12px;padding:10px 0;margin-bottom:4px">
       <div style="width:48px;height:48px;background:var(--blue);border-radius:12px;display:flex;align-items:center;justify-content:center;color:#fff;font-size:20px;font-weight:700">${CU.nome.charAt(0)}</div>
@@ -1376,7 +1439,33 @@ function abrirPerfil(){
     ${DB.users.map(u=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:9px 0;border-bottom:1px solid var(--border)"><div><div style="font-size:13px;font-weight:600">${u.nome}</div><div style="font-size:12px;color:var(--text2)">${u.user} · ${u.cargo||u.role}</div></div><span class="pill ${u.role==='admin'?'pill-blue':'pill-green'}">${u.role==='admin'?'Admin':'Func.'}</span></div>`).join('')}
     <button class="btn btn-outline" style="margin-top:12px" onclick="closeSheet('sh-perfil');setTimeout(()=>openSheet('sh-usr'),300)"><i class="ti ti-user-plus"></i> Adicionar funcionário</button>
     <div class="sep"></div>
-    <div style="font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px">Banco de dados</div>
+
+    <!-- GOOGLE DRIVE -->
+    <div style="background:var(--blue-l);border-radius:10px;padding:14px;margin-bottom:12px;border:1px solid var(--blue-ll)">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+        <div style="font-size:13px;font-weight:700;color:var(--blue);display:flex;align-items:center;gap:7px">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M6.3 15.5L1 6.5L8 6.5L13.3 15.5H6.3Z" fill="#4285F4"/><path d="M13.3 15.5L16 10.5L23 10.5L17.7 19.5H11L13.3 15.5Z" fill="#FBBC05"/><path d="M8 6.5L13.3 15.5H6.3L1 6.5H8Z" fill="#34A853"/><path d="M16 10.5L23 10.5L17.7 19.5L11 19.5L16 10.5Z" fill="#EA4335"/><path d="M8 6.5L16 10.5L13.3 15.5L6.3 15.5L8 6.5Z" fill="#4285F4" opacity=".6"/></svg>
+          Google Drive Sync
+        </div>
+        <span id="gdrive-status-txt" style="font-size:12px;font-weight:600">🔴 Desconectado</span>
+      </div>
+      <div style="font-size:12px;color:var(--blue);margin-bottom:10px;line-height:1.5">Quando conectado, os dados são salvos automaticamente no seu Google Drive a cada alteração. Funciona em qualquer dispositivo.</div>
+      <div class="fg" style="margin-bottom:8px"><label style="color:var(--blue)">Google Client ID</label><input type="text" id="gdrive-client-id" placeholder="Cole aqui o Client ID do Google Cloud" value="${savedClient}" style="font-size:12px;background:#fff"></div>
+      <div style="display:flex;gap:8px;margin-bottom:8px">
+        <button class="btn btn-blue btn-sm" style="flex:1" onclick="gdriveConnect()"><i class="ti ti-brand-google"></i> Conectar Drive</button>
+        <button class="btn btn-ghost btn-sm" style="flex:1" onclick="gdriveLoad()"><i class="ti ti-cloud-download"></i> Carregar do Drive</button>
+      </div>
+      <div id="gdrive-token-area" style="display:none">
+        <div style="font-size:11px;color:var(--blue);margin-bottom:6px;background:#fff;padding:8px;border-radius:7px;line-height:1.5">Após autorizar no popup, copie o token da URL (após <strong>access_token=</strong>) e cole abaixo:</div>
+        <div class="fg" style="margin-bottom:8px"><input type="text" id="gdrive-token-inp" placeholder="Cole o access_token aqui" style="font-size:12px;background:#fff"></div>
+        <button class="btn btn-blue btn-sm" onclick="gdriveSaveToken()"><i class="ti ti-check"></i> Confirmar token</button>
+      </div>
+      <div style="font-size:11px;color:var(--blue);margin-top:8px;padding:8px;background:rgba(255,255,255,.6);border-radius:7px">
+        💡 <a href="https://console.cloud.google.com" target="_blank" style="color:var(--blue);font-weight:600">Google Cloud Console</a> → Criar projeto → APIs → Drive API → Credenciais → OAuth 2.0 → Client ID
+      </div>
+    </div>
+
+    <div style="font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px">Backup manual</div>
     <button class="btn btn-ghost" style="margin-bottom:9px" onclick="exportDB()"><i class="ti ti-database-export"></i> Exportar backup (JSON)</button>
     <button class="btn btn-ghost" style="margin-bottom:9px" onclick="document.getElementById('imp-file').click()"><i class="ti ti-database-import"></i> Importar backup</button>
     <input type="file" id="imp-file" accept=".json" style="display:none" onchange="importDB(event)">
@@ -1389,6 +1478,10 @@ function abrirPerfil(){
     <div class="sep"></div>
     <button class="btn btn-ghost" onclick="doLogout()"><i class="ti ti-logout"></i> Sair da conta</button>`;
   openSheet('sh-perfil');
+  atualizarStatusGdrive();
+  // restore token if saved
+  const tk=localStorage.getItem('cf_gdrive_token');
+  if(tk&&!gdriveToken){gdriveToken=tk;gdriveFileId=localStorage.getItem('cf_gdrive_fileid')||null;gdriveStatus='conectado';atualizarStatusGdrive();}
 }
 
 // ===== LIMPAR =====
@@ -1410,6 +1503,77 @@ function salvarUsuario(){
   ['nu-nome','nu-user','nu-pass'].forEach(id2=>{const el=document.getElementById(id2);if(el)el.value='';});
 }
 
+// ===== GOOGLE DRIVE SYNC =====
+const GDRIVE_FILE='carioca_financeira_dados.json';
+let gdriveFileId=null,gdriveToken=null,gdriveStatus='desconectado';
+
+function gdriveSave(silent=false){
+  if(!gdriveToken){if(!silent)showToast('Conecte ao Google Drive primeiro','warn');return;}
+  const content=JSON.stringify(DB,null,2);
+  const boundary='carioca_boundary';
+  const metadata={name:GDRIVE_FILE,mimeType:'application/json'};
+  const body=`--${boundary}\r\nContent-Type: application/json\r\n\r\n${JSON.stringify(metadata)}\r\n--${boundary}\r\nContent-Type: application/json\r\n\r\n${content}\r\n--${boundary}--`;
+  const url=gdriveFileId
+    ?`https://www.googleapis.com/upload/drive/v3/files/${gdriveFileId}?uploadType=multipart`
+    :`https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart`;
+  const method=gdriveFileId?'PATCH':'POST';
+  fetch(url,{method,headers:{'Authorization':'Bearer '+gdriveToken,'Content-Type':`multipart/related; boundary=${boundary}`},body})
+    .then(r=>r.json()).then(d=>{
+      if(d.id){gdriveFileId=d.id;localStorage.setItem('cf_gdrive_fileid',d.id);}
+      if(!silent)showToast('✅ Salvo no Google Drive!');
+      gdriveStatus='sincronizado';atualizarStatusGdrive();
+    }).catch(()=>{if(!silent)showToast('Erro ao salvar no Drive','err');});
+}
+
+function gdriveLoad(){
+  if(!gdriveToken){showToast('Conecte ao Google Drive primeiro','warn');return;}
+  if(!gdriveFileId){showToast('Nenhum arquivo encontrado no Drive','warn');return;}
+  fetch(`https://www.googleapis.com/drive/v3/files/${gdriveFileId}?alt=media`,{headers:{'Authorization':'Bearer '+gdriveToken}})
+    .then(r=>r.json()).then(data=>{
+      if(data.clientes||data.contratos){
+        if(data.users)DB.users=data.users;
+        DB.clientes=data.clientes||[];DB.contratos=data.contratos||[];DB.pagamentos=data.pagamentos||[];
+        saveDB();populateSelects();renderAll();renderPainel();checkAlertas();showToast('✅ Dados carregados do Drive!');
+      }else showToast('Arquivo do Drive inválido','err');
+    }).catch(()=>showToast('Erro ao carregar do Drive','err'));
+}
+
+function gdriveConnect(){
+  const CLIENT_ID=document.getElementById('gdrive-client-id').value.trim();
+  if(!CLIENT_ID){showToast('Informe o Client ID','err');return;}
+  localStorage.setItem('cf_gdrive_client',CLIENT_ID);
+  const redirect=location.href.split('?')[0];
+  const scope='https://www.googleapis.com/auth/drive.file';
+  const url=`https://accounts.google.com/o/oauth2/v2/auth?client_id=${CLIENT_ID}&redirect_uri=${encodeURIComponent(redirect)}&response_type=token&scope=${encodeURIComponent(scope)}`;
+  window.open(url,'_blank','width=500,height=600');
+  showToast('Autorize no popup e cole o token abaixo','warn');
+  document.getElementById('gdrive-token-area').style.display='block';
+}
+
+function gdriveSaveToken(){
+  const token=document.getElementById('gdrive-token-inp').value.trim();
+  if(!token){showToast('Cole o token de acesso','err');return;}
+  gdriveToken=token;
+  localStorage.setItem('cf_gdrive_token',token);
+  gdriveFileId=localStorage.getItem('cf_gdrive_fileid')||null;
+  gdriveStatus='conectado';atualizarStatusGdrive();
+  showToast('✅ Google Drive conectado!');
+  // try to find existing file
+  fetch(`https://www.googleapis.com/drive/v3/files?q=name='${GDRIVE_FILE}'&spaces=drive`,{headers:{'Authorization':'Bearer '+token}})
+    .then(r=>r.json()).then(d=>{if(d.files&&d.files[0]){gdriveFileId=d.files[0].id;localStorage.setItem('cf_gdrive_fileid',gdriveFileId);}})
+    .catch(()=>{});
+}
+
+function atualizarStatusGdrive(){
+  const el=document.getElementById('gdrive-status-txt');if(!el)return;
+  const icons={desconectado:'🔴',conectado:'🟡',sincronizado:'🟢'};
+  el.textContent=icons[gdriveStatus]+' '+gdriveStatus.charAt(0).toUpperCase()+gdriveStatus.slice(1);
+}
+
+// auto-save to Drive on every saveDB if connected
+const _origSaveDB=saveDB;
+function saveDB(){_origSaveDB();if(gdriveToken)setTimeout(()=>gdriveSave(true),800);}
+
 // ===== EXPORT/IMPORT =====
 function exportDB(){
   const blob=new Blob([JSON.stringify(DB,null,2)],{type:'application/json'});
@@ -1420,7 +1584,7 @@ function importDB(e){
   const file=e.target.files[0];if(!file)return;
   const reader=new FileReader();
   reader.onload=ev=>{
-    try{const data=JSON.parse(ev.target.result);if(data.clientes||data.contratos){if(data.users)DB.users=data.users;DB.clientes=data.clientes||[];DB.contratos=data.contratos||[];DB.pagamentos=data.pagamentos||[];saveDB();populateSelects();renderAll();renderPainel();checkAlertas();showToast('✅ Backup importado!');}else showToast('Arquivo inválido','err');}
+    try{const data=JSON.parse(ev.target.result);if(data.clientes||data.contratos){if(data.users)DB.users=data.users;DB.clientes=data.clientes||[];DB.contratos=data.contratos||[];DB.pagamentos=data.pagamentos||[];_origSaveDB();populateSelects();renderAll();renderPainel();checkAlertas();showToast('✅ Backup importado!');}else showToast('Arquivo inválido','err');}
     catch(err){showToast('Erro ao importar','err');}
   };
   reader.readAsText(file);e.target.value='';
